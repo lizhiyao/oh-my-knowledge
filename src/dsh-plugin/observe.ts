@@ -30,7 +30,7 @@ const MAX_SOURCE_RECORD_BYTES = 16 * 1024 * 1024;
 
 export interface DshPersistenceSnapshotLike {
   readonly header: DshSessionHeaderLike;
-  readonly revision: unknown;
+  readonly revision: string;
 }
 
 export interface DshSessionInspectionLike {
@@ -38,9 +38,18 @@ export interface DshSessionInspectionLike {
   readonly events: readonly DshSessionEventLike[];
 }
 
+interface DshSessionReadHandle {
+  readonly header: DshSessionHeaderLike;
+  readonly inheritedEventCount: number;
+  read(offset?: number, length?: number, options?: { signal?: AbortSignal }): Promise<{
+    readonly events: readonly DshSessionEventLike[];
+  }>;
+  close(): Promise<void>;
+}
+
 export interface DshSessionPersistenceLike {
-  listSnapshots(signal?: AbortSignal): Promise<readonly DshPersistenceSnapshotLike[]>;
-  inspect(id: string, signal?: AbortSignal): Promise<DshSessionInspectionLike>;
+  list(options?: { signal?: AbortSignal }): Promise<readonly DshPersistenceSnapshotLike[]>;
+  open(id: string, access: 'read', options?: { signal?: AbortSignal }): Promise<DshSessionReadHandle>;
 }
 
 export interface DshObserveCandidate {
@@ -125,10 +134,6 @@ function groupSessionIds(
   });
 }
 
-function sameRevision(left: unknown, right: unknown): boolean {
-  return Object.is(left, right);
-}
-
 function stableGroup(
   before: Map<string, DshPersistenceSnapshotLike>,
   after: Map<string, DshPersistenceSnapshotLike>,
@@ -141,7 +146,7 @@ function stableGroup(
   return beforeIds.every((id) => {
     const left = before.get(id);
     const right = after.get(id);
-    return left !== undefined && right !== undefined && sameRevision(left.revision, right.revision);
+    return left !== undefined && right !== undefined && left.revision === right.revision;
   });
 }
 
@@ -152,22 +157,50 @@ function revisionLabel(
   return ids.map((id) => `${id}:${String(snapshots.get(id)?.revision ?? 'missing')}`).join('|');
 }
 
+async function inspectSession(
+  persistence: DshSessionPersistenceLike, id: string, signal?: AbortSignal,
+): Promise<DshSessionInspectionLike> {
+  const handle = await persistence.open(id, 'read', { signal });
+  try {
+    const { events } = await handle.read(undefined, undefined, { signal });
+    return { meta: { ...handle.header, seedLength: handle.inheritedEventCount }, events };
+  } finally {
+    await handle.close();
+  }
+}
+
+type SessionReadOptions = {
+  signal?: AbortSignal;
+  includesCwd?: (cwd: string | undefined) => boolean;
+};
+
 /** Read one root+descendant group through the logical persistence seam without mutating it. */
 export async function readDshObservedGroup(
   persistence: DshSessionPersistenceLike,
   selectedSessionId: string,
-  signal?: AbortSignal,
+  { signal, includesCwd }: SessionReadOptions = {},
 ): Promise<DshObservedGroup> {
   for (let attempt = 1; attempt <= MAX_STABLE_READ_ATTEMPTS; attempt += 1) {
     signal?.throwIfAborted();
-    const before = snapshotMap(await persistence.listSnapshots(signal));
+    const before = snapshotMap(await persistence.list({ signal }));
     if (!before.has(selectedSessionId)) throw new Error(`DSH session 不存在：${selectedSessionId}。`);
     const rootId = rootSessionId(selectedSessionId, before);
     const ids = groupSessionIds(rootId, before);
-    const inspections = await Promise.all(ids.map((id) => persistence.inspect(id, signal)));
+    if (includesCwd && ids.some(id => !includesCwd(before.get(id)?.header.cwd))) {
+      throw new Error('DSH 会话及其子会话必须属于当前项目。');
+    }
+    // Join all read handles before returning, including when a sibling read fails.
+    const reads = await Promise.allSettled(ids.map((id) => inspectSession(persistence, id, signal)));
     signal?.throwIfAborted();
-    const after = snapshotMap(await persistence.listSnapshots(signal));
+    const after = snapshotMap(await persistence.list({ signal }));
     if (!stableGroup(before, after, rootId)) continue;
+    const inspections = reads.map((read, index) => {
+      if (read.status === 'rejected') throw read.reason;
+      if (read.value.meta.id !== ids[index] || includesCwd && !includesCwd(read.value.meta.cwd)) {
+        throw new Error('DSH 会话读取结果与选定会话或项目不一致。');
+      }
+      return read.value;
+    });
     const traces = inspections.map((inspection) => adaptDshSession(inspection.meta, inspection.events, {
       rootRunId: rootId,
       role: String(inspection.meta.id) === rootId ? 'main' : 'subagent',
@@ -187,11 +220,11 @@ export async function readDshObservedGroup(
 async function inspectCandidate(
   persistence: DshSessionPersistenceLike,
   snapshot: DshPersistenceSnapshotLike,
-  signal?: AbortSignal,
+  options: SessionReadOptions,
 ): Promise<DshObserveCandidate | undefined> {
   const sessionId = String(snapshot.header.id);
   try {
-    const group = await readDshObservedGroup(persistence, sessionId, signal);
+    const group = await readDshObservedGroup(persistence, sessionId, options);
     const trace = group.traces.find((item) => item.session.runId === sessionId);
     if (!trace) return undefined;
     if (group.traces.some((item) => !item.integrity.complete)) return undefined;
@@ -206,6 +239,7 @@ async function inspectCandidate(
       status,
     };
   } catch {
+    options.signal?.throwIfAborted();
     return undefined;
   }
 }
@@ -213,18 +247,19 @@ async function inspectCandidate(
 /** List recent terminal root sessions; the command's own live session stays out of the default result. */
 export async function listDshObserveCandidates(
   persistence: DshSessionPersistenceLike,
-  options: { excludeSessionId?: string; limit?: number; signal?: AbortSignal } = {},
+  options: SessionReadOptions & { excludeSessionId?: string; limit?: number } = {},
 ): Promise<DshObserveCandidate[]> {
   const limit = Math.max(1, options.limit ?? DEFAULT_LIST_LIMIT);
-  const snapshots = [...await persistence.listSnapshots(options.signal)]
+  const snapshots = [...await persistence.list({ signal: options.signal })]
     .filter((snapshot) => snapshot.header.origin !== 'subagent'
+      && (!options.includesCwd || options.includesCwd(snapshot.header.cwd))
       && String(snapshot.header.id) !== options.excludeSessionId)
     .sort((left, right) => right.header.createdAt - left.header.createdAt)
     .slice(0, Math.max(limit, LIST_INSPECTION_LIMIT));
   const candidates: DshObserveCandidate[] = [];
   for (const snapshot of snapshots) {
     options.signal?.throwIfAborted();
-    const candidate = await inspectCandidate(persistence, snapshot, options.signal);
+    const candidate = await inspectCandidate(persistence, snapshot, options);
     if (candidate) candidates.push(candidate);
     if (candidates.length >= limit) break;
   }
@@ -345,35 +380,34 @@ function taskItem(threadId: string, turn: ExperienceTurnSummary): ConversationTa
 }
 
 function catalogEntry(group: DshObservedGroup): CatalogEntry {
-  const rootTrace = group.traces.find((trace) => trace.session.runId === group.rootSessionId)
-    ?? group.traces[0];
-  if (!rootTrace) throw new Error(`DSH session group 为空：${group.rootSessionId}。`);
+  const rootTrace = group.traces.find(trace => trace.session.runId === group.rootSessionId);
+  const selected = group.traces.find(trace => trace.session.runId === group.selectedSessionId);
+  if (!rootTrace || !selected) throw new Error(`DSH session group 缺少会话：${group.selectedSessionId}。`);
   const timeline = mergedTimeline(group);
   const turns = attachDescendantsToRootTurns(
     reconstructExperienceTurns(timeline),
     timeline,
     rootTrace.session.traceId,
   );
-  const rootTimeline = timeline.filter((event) => event.traceId === rootTrace.session.traceId);
-  const firstUser = rootTimeline.find((event) => event.kind === 'user_message');
-  const title = firstUser?.fullText?.trim() || firstUser?.snippet?.trim() || `DSH session ${group.rootSessionId}`;
-  const tasks = turns.map((turn) => taskItem(group.rootSessionId, turn));
-  const startTimestamp = rootTrace.session.startTimestamp;
-  const endTimestamp = rootTrace.session.endTimestamp;
+  const { runId, traceId, cwd, startTimestamp, endTimestamp, sourceMetadata } = selected.session;
+  const firstUser = timeline.find(event => event.traceId === traceId && event.kind === 'user_message');
+  const title = firstUser?.fullText?.trim() || firstUser?.snippet?.trim() || `DSH session ${runId}`;
+  // Each conversation owns one logical record index. Descendants still contribute trajectory evidence.
+  const tasks = turns.filter(turn => turn.traceId === traceId).map(turn => taskItem(runId, turn));
   return {
     group,
     turns,
     timeline,
     records: sourceRecords(group),
     conversation: {
-      threadId: group.rootSessionId,
-      sourceThreadId: group.rootSessionId,
+      threadId: runId,
+      sourceThreadId: runId,
       sourceKind: 'dsh',
       title: title.replace(/\s+/g, ' ').slice(0, 160),
       preview: title.replace(/\s+/g, ' ').slice(0, 240),
-      cwd: rootTrace.session.cwd,
-      model: rootTrace.session.sourceMetadata?.model,
-      childThreadCount: Math.max(0, group.traces.length - 1),
+      cwd,
+      model: sourceMetadata?.model,
+      childThreadCount: runId === group.rootSessionId ? group.traces.length - 1 : undefined,
       startTimestamp,
       endTimestamp,
       durationMs: durationMsBetween(startTimestamp, endTimestamp),
@@ -401,12 +435,10 @@ export function createDshConversationCatalog(): MutableDshConversationCatalog {
   return {
     upsert(group) {
       const entry = catalogEntry(group);
-      entries.set(group.rootSessionId, entry);
-      const selectedTrace = group.traces.find((trace) => trace.session.runId === group.selectedSessionId);
-      const selectedTurn = [...entry.turns].reverse().find((turn) => turn.traceId === selectedTrace?.session.traceId)
-        ?? entry.turns.at(-1);
+      const selectedTurn = entry.conversation.tasks.at(-1);
       if (!selectedTurn) throw new Error(`DSH session 没有可展示的任务：${group.selectedSessionId}。`);
-      return { threadId: group.rootSessionId, turnId: selectedTurn.turnId };
+      entries.set(group.selectedSessionId, entry);
+      return { threadId: group.selectedSessionId, turnId: selectedTurn.turnId };
     },
     async listConversations(): Promise<ConversationIndexViewModel> {
       const conversations = Array.from(entries.values())
@@ -426,13 +458,32 @@ export function createDshConversationCatalog(): MutableDshConversationCatalog {
     async getConversation(threadId) {
       return entries.get(threadId)?.conversation;
     },
+    async loadTaskMessageRecords(threadId, turnId) {
+      const entry = entries.get(threadId);
+      if (!entry?.conversation.tasks.some(task => task.turnId === turnId)) return undefined;
+      const turn = entry.turns.find(candidate => candidate.turnId === turnId);
+      if (!turn) return undefined;
+      const traceIndex = entry.group.traces.findIndex(trace => trace.session.traceId === turn.traceId);
+      const trace = entry.group.traces[traceIndex];
+      const inspection = entry.group.inspections[traceIndex];
+      if (!trace || !inspection) return undefined;
+      const ids = new Set(turn.eventIds);
+      const indexes = new Set(entry.timeline.flatMap(event => ids.has(event.id) && event.traceId === turn.traceId
+        && (event.kind === 'user_message' && event.sourceType === 'user/message'
+          || event.kind === 'assistant_message' && event.sourceType === 'assistant/message')
+        && event.sourceLineIndex !== undefined ? [event.sourceLineIndex] : []));
+      return {
+        path: trace.session.sourcePath,
+        records: [...indexes].sort((left, right) => left - right)
+          .map(recordIndex => ({ recordIndex, raw: JSON.stringify(inspection.events[recordIndex - 1]) })),
+      };
+    },
     async loadTaskTrajectory(threadId, turnId): Promise<ConversationTaskTrajectory | undefined> {
       const entry = entries.get(threadId);
-      const turn = entry?.turns.find((candidate) => candidate.turnId === turnId);
-      if (!entry || !turn) return undefined;
-      const rootTrace = entry.group.traces.find((trace) => trace.session.runId === entry.group.rootSessionId)
-        ?? entry.group.traces[0];
-      if (!rootTrace) return undefined;
+      if (!entry?.conversation.tasks.some(task => task.turnId === turnId)) return undefined;
+      const turn = entry.turns.find((candidate) => candidate.turnId === turnId);
+      const selected = entry.group.traces.find(trace => trace.session.runId === threadId);
+      if (!turn || !selected) return undefined;
       return {
         revision: entry.group.revision,
         status: turn.status,
@@ -440,15 +491,15 @@ export function createDshConversationCatalog(): MutableDshConversationCatalog {
         session: {
           id: `dsh:${threadId}`,
           threadId,
-          sourceThreadId: entry.group.rootSessionId,
-          sessionId: entry.group.selectedSessionId,
-          sourceTrace: rootTrace.session.sourcePath,
+          sourceThreadId: threadId,
+          sessionId: threadId,
+          sourceTrace: selected.session.sourcePath,
           sourceKind: 'dsh',
           entrypoint: 'dsh',
-          sourceMetadata: rootTrace.session.sourceMetadata,
-          cwd: rootTrace.session.cwd,
-          startTimestamp: rootTrace.session.startTimestamp,
-          endTimestamp: rootTrace.session.endTimestamp,
+          sourceMetadata: selected.session.sourceMetadata,
+          cwd: selected.session.cwd,
+          startTimestamp: selected.session.startTimestamp,
+          endTimestamp: selected.session.endTimestamp,
           attributedEventIds: [],
           turns: entry.turns,
           fullSessionTimeline: entry.timeline,

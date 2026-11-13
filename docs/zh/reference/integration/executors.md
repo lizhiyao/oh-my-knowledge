@@ -101,14 +101,14 @@ optional peer 范围 `>=0.165.0` 允许安装更新的稳定版，不设上限�
 
 ## DeepSeek Harness：优先使用宿主插件
 
-已经在本机使用 DSH 时，推荐让现有 DSH profile 加载 OMK，而不是由 OMK 再启动一套 runtime：
+在现有 DSH Web profile 中安装 OMK。此集成使用 DSH `0.2.2-rc.1` 验证，该版本要求 Node.js 24.9 或更新版本：
 
 ```bash
 dsh plugin --profile web add oh-my-knowledge
 dsh --profile web
 ```
 
-然后在 DSH 中运行：
+在 Web 侧栏打开 **插件**，从 **已安装插件** 中选择 **oh-my-knowledge** 并启用。若 profile 提示需要重启，重启 DSH。随后在 DSH 中运行：
 
 ```text
 /omk eval eval.yaml
@@ -116,15 +116,17 @@ dsh --profile web
 /omk observe <session-id>
 ```
 
+按[项目知识流程](../../guides/observe/observe-production.md#在-deepseek-harness-中沉淀和复用知识)从已结束的轮次提炼，并在 DSH 中检索已保留的修订。
+
 `eval.yaml` 相对当前 DSH session 的 `cwd` 解析。配置中应省略顶层 `executor`，被测执行器始终是当前 DSH 宿主。被测模型默认继承当前 session；也可以在配置中显式写 `model`。评委需要复用当前 DSH 时，可使用面向用户的 `executor: dsh` 别名；`dsh-host` 是 OMK 内部标识，不能写入用户配置。插件为每条 sample 创建新的 DSH agent／session，复用当前 profile 已配置的 provider、凭证、工具、sandbox 与持久化，同时用 complete system-prompt section 注入 control／treatment、关闭 runtime context 和环境 `skill` 工具。DSH 的 `session/event` 按宿主观测顺序映射为 OMK 的 token、turn、tool call 与子 agent 证据，报告写入项目的 `.omk/eval`。
 
 插件会先从发起命令的 session 组合 active agent preset，再叠加 OMK 的测量隔离。继承当前 session 模型且评委均复用同一个 DSH 模型时，当前交互 session 本身即作为连通性证据，不会额外创建探测 session；显式覆盖被测模型、使用不同 DSH 评委模型或外部评委时仍会执行连通性预检。宿主模式的配置应省略 `effort`：DSH 的 reasoning effort 是 provider-owned 枚举，无法与 OMK 的五档通用级别无损映射；需要在 DSH profile 中固定目标推理配置。`goldDir` 仍受支持，并会把人工 gold 一致性写回持久化报告。
 
-当前 PoC 通过 DSH 的人类命令注册表提供 `/omk`，因此要求 profile 组合 `ctx.commands` 及其命令适配器；内置 `web` profile 满足这一条件，headless／ACP／JSON-RPC surface 暂不消费该命令。`Sample.mocks` 仍不支持。runtime 指纹包含 DSH 宿主版本、OMK 适配器版本、provider、agent preset、有效工具 schema 和清理超时。由于 DSH 尚未提供覆盖全部插件与策略的规范组合摘要，该指纹会明确标记为仅部分可审计，严格可比性检查将给出警告，而不会声称运行时完全一致。
+`/omk` 使用 DSH 的人类命令注册表，要求 profile 组合 `ctx.commands` 及其命令适配器。内置 `web` profile 满足该条件。受控评测排除项目知识检索工具。`Sample.mocks` 仍不支持。runtime 指纹包含 DSH 宿主版本、OMK 适配器版本、provider、agent preset、有效工具 schema 和清理超时。DSH 尚未提供覆盖全部插件与策略的规范组合摘要，该指纹标记为仅部分可审计，严格可比性检查会给出警告。
 
-取消后，Core 等待宿主 idle 最多 5 秒，随后等待 session 关闭最多再用 5 秒。嵌入适配器时可通过 `DshHostCoreConfiguration.cleanupTimeoutMs` 配置 1～2147483647 毫秒的整数，该值纳入 runtime 指纹。宿主卡住时会输出诊断并保留取消或基础设施失败，不能算作成功执行；停止等待不代表宿主已经终止。适配器实现版本为 `2.0.2`；存量证据保留，但 runtime identity 与早期适配器不同。Studio 使用默认固定端口 7799 或 `OMK_REPORT_PORT`；并发 observe 共用一次启动，插件关闭时释放该服务。
+取消后，Core 等待宿主 idle 最多 5 秒，随后等待 session 关闭最多再用 5 秒。嵌入适配器时可通过 `DshHostCoreConfiguration.cleanupTimeoutMs` 配置 1～2147483647 毫秒的整数，该值纳入 runtime 指纹。宿主卡住时会输出诊断并保留取消或基础设施失败。适配器实现版本为 `2.0.3`，新运行使用相应的 runtime identity。Studio 使用默认固定端口 7799 或 `OMK_REPORT_PORT`。并发 observe 共用一次启动，插件关闭时释放该服务。
 
-`/omk observe` 还要求 profile 提供 `ctx.sessionPersistence`。它列出最近已结束的 root session，并排除发起命令的当前 session；`/omk observe <session-id>` 通过 `listSnapshots()`／`inspect()` 只读取得逻辑事件流，比较读取前后的 revision，稳定后转换为 `sourceKind: dsh` 的 Trace IR，并返回实际监听地址下的 Studio 任务轨迹链接。JSONL、zstd 与 SQLite 的物理格式均由 DSH backend 负责，OMK 不解析这些文件。持续写入、required 未知事件、序号断裂、未闭合 turn／step 或缺失 tool result 都会拒绝“完整轨迹”结论。首版是离线快照，不实时跟随正在运行的 session。
+`/omk observe` 要求 profile 提供 `ctx.sessionPersistence`。OMK 用 DSH 只读句柄取得逻辑事件，在读取前后比较 revision，再用 Studio 的实际监听地址打开一致快照。JSONL、zstd 与 SQLite 物理存储由 DSH 负责。命令要求所有必需事件可识别、序号连续、turn 和 step 已闭合、工具调用及结果可匹配。
 
 本地开发 checkout 可以先构建，再直接链接到 profile：
 

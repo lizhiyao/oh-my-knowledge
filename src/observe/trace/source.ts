@@ -307,8 +307,14 @@ export interface DetectedJsonlTrace {
 export function detectJsonlTraceSource(
   filePath: string,
   records: Array<CcRecord | undefined>,
+  options: { hostBoundDshRecords?: boolean } = {},
 ): DetectedJsonlTrace | undefined {
-  const { matching } = detectJsonlFormats(records);
+  const { matching, satisfied } = detectJsonlFormats(records);
+  // A trusted host selection can omit the session header without inventing a source record.
+  if (options.hostBoundDshRecords && satisfied(dshEventEvidence)) {
+    if (matching.length === 0) return { sourceKind: 'dsh', session: parseDshSessionFile(filePath, records) };
+    if (matching[0].sourceKind !== 'dsh') return undefined;
+  }
   if (matching.length !== 1) return undefined;
   return { sourceKind: matching[0].sourceKind, session: matching[0].parse(filePath, records) };
 }

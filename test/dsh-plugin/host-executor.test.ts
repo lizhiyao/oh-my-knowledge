@@ -48,6 +48,7 @@ class FakeDshHost implements DshHostContextLike {
   };
 
   readonly tools = {
+    register: () => () => undefined,
     schemas: () => [
       { name: 'read', description: 'read files', parameters: { type: 'object' } },
       { name: 'skill', description: 'ambient skills', parameters: { type: 'object' } },
@@ -56,10 +57,8 @@ class FakeDshHost implements DshHostContextLike {
 
   readonly agents = {
     create: async (options: Parameters<DshHostContextLike['agents']['create']>[0]) => {
-      const events: UnknownRecord[] = [];
       const session: DshSessionLike = {
         id: options.sessionId,
-        events,
         header: {
           cwd: options.meta.cwd,
           ...(options.meta.parentSession ? { parentSession: options.meta.parentSession } : {}),
@@ -69,9 +68,7 @@ class FakeDshHost implements DshHostContextLike {
       let settle: (() => void) | undefined;
       let idle = Promise.resolve();
       type SetupContext = Parameters<typeof options.setup>[0];
-      const scope = { agent: undefined as DshAgentLike | undefined };
       const agentCtx: SetupContext = {
-        get agent() { return scope.agent; },
         systemPrompt: {
           section: (section) => {
             this.promptSections.push(section);
@@ -136,8 +133,7 @@ class FakeDshHost implements DshHostContextLike {
           if (this.behavior.cancelSettles !== false) settle?.();
         },
       };
-      scope.agent = agent;
-      options.setup(agentCtx);
+      options.setup(agentCtx, agent);
       this.created.push({
         sessionId: options.sessionId,
         cwd: options.meta.cwd,
@@ -172,7 +168,6 @@ class FakeDshHost implements DshHostContextLike {
   }
 
   private emitEvent(session: DshSessionLike, event: UnknownRecord): void {
-    (session.events as UnknownRecord[]).push(event);
     for (const listener of this.eventListeners) listener(session, event);
   }
 }
@@ -183,7 +178,6 @@ const parentAgent = {
   ctx: { name: 'interactive-agent-context' },
   session: {
     id: 'interactive-session',
-    events: [],
     header: { cwd: '/project', agentPreset: 'standard' },
   },
   followup() {},
@@ -482,12 +476,15 @@ describe('DSH bundle metadata', () => {
 });
 
 describe('DSH plugin discovery', () => {
-  it('confirms the installed integration and presents both user entrypoints', async () => {
+  it('registers the command and the project knowledge tool', async () => {
     let definition: {
       description: string;
       handler: (invocation: Record<string, unknown>) => Promise<{ kind: string; text?: string }>;
     } | undefined;
+    const registerTool = vi.fn(() => () => undefined);
+    assert.equal(Object.hasOwn(apply, 'prototype'), false, 'Cordis must call apply and collect its disposer');
     const dispose = apply({
+      tools: { register: registerTool },
       commands: {
         register(value: typeof definition) {
           definition = value;
@@ -496,7 +493,8 @@ describe('DSH plugin discovery', () => {
       },
     } as never);
     assert.ok(definition);
-    assert.match(definition.description, /对照评测或查看任务轨迹/u);
+    assert.match(definition.description, /查看任务轨迹和提炼知识/u);
+    assert.equal(registerTool.mock.calls.length, 1);
     const invocation = {
       agent: parentAgent,
       signal: new AbortController().signal,
@@ -507,9 +505,10 @@ describe('DSH plugin discovery', () => {
       assert.match(result.text ?? '', /已接入当前 DeepSeek Harness/u);
       assert.match(result.text ?? '', /\/omk eval <eval\.yaml>/u);
       assert.match(result.text ?? '', /\/omk observe <session-id>/u);
+      assert.match(result.text ?? '', /omk_knowledge_retrieve/u);
       assert.match(result.text ?? '', /oh-my-knowledge\.pages\.dev/u);
     }
-    dispose();
+    await dispose();
   });
 });
 

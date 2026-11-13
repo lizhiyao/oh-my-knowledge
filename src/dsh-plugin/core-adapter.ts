@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { DSH_KNOWLEDGE_TOOL } from './knowledge.js';
 import {
   JsonValueSchema,
   RuntimeIdentitySchema,
@@ -221,7 +222,8 @@ function effectiveToolSchemas(
   target: CapturedDshTarget,
 ): readonly CapturedToolSchema[] {
   const disableSkills = target.config.behavior.allowedSkills !== undefined;
-  const available = new Set(schemas.map(({ name }) => name));
+  const effective = schemas.filter(({ name }) => name !== DSH_KNOWLEDGE_TOOL);
+  const available = new Set(effective.map(({ name }) => name));
   const toolControls = [
     target.target.executionControls.defaults.tools,
     ...target.target.executionControls.sampleOverrides.flatMap((override) => (
@@ -242,7 +244,7 @@ function effectiveToolSchemas(
       );
     }
   }
-  return Object.freeze([...schemas]);
+  return Object.freeze(effective);
 }
 
 function captureHost(
@@ -733,7 +735,7 @@ async function executeDshHost(
           model: target.binding.qualification.model,
         },
         signal: attempt.signal,
-        setup(agentContext) {
+        setup(agentContext, agent) {
           if (host.composeFrom !== undefined) {
             const currentPreset = host.composeFrom(agentContext);
             if (currentPreset !== host.activeAgentPreset) {
@@ -751,7 +753,8 @@ async function executeDshHost(
             complete: true,
           });
           agentContext.systemPrompt.suppressRuntimeContext();
-          if (allowedTools !== undefined || skillsDisabled) {
+          const knowledgeToolVisible = agentContext.tools?.get(DSH_KNOWLEDGE_TOOL, agent) !== undefined;
+          if (allowedTools !== undefined || skillsDisabled || knowledgeToolVisible) {
             if (
               agentContext.tools === undefined
               || typeof agentContext.tools.guard !== 'function'
@@ -764,10 +767,13 @@ async function executeDshHost(
             }
             if (allowedTools !== undefined && effectiveToolNames.length > 0) {
               agentContext.tools.restrict({ allow: effectiveToolNames });
-            } else if (deniedTools.length > 0) {
-              agentContext.tools.restrict({ deny: deniedTools });
+            } else if (deniedTools.length > 0 || knowledgeToolVisible) {
+              agentContext.tools.restrict({ deny: knowledgeToolVisible ? [...deniedTools, DSH_KNOWLEDGE_TOOL] : deniedTools });
             }
             agentContext.tools.guard(({ name }) => {
+              if (name === DSH_KNOWLEDGE_TOOL) {
+                return 'OMK evaluation policy disabled project knowledge retrieval.';
+              }
               if (skillsDisabled && name === 'skill') {
                 return 'OMK evaluation policy disabled skill discovery.';
               }

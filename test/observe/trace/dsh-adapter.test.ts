@@ -66,6 +66,25 @@ function byKind<K extends TraceEvent['eventKind']>(session: TraceSession, kind: 
 }
 
 describe('DSH 磁盘会话映射', () => {
+  it('accepts a minimal V4 header and matches flat tool results', () => {
+    const records = [
+      { type: 'session', id: 'session-v4', version: 4, createdAt: 1780000000000, isSeeded: false },
+      RECORDS[6],
+      { type: 'tool/result', seq: 7, time: 1780000007000, data: {
+        turn: 0, step: 0, message: { role: 'tool', id: 'result-v4', toolCallId: 'call_1',
+          content: [{ type: 'text', text: 'permission denied' }], isError: true },
+      } },
+    ] as CcRecord[];
+    const detected = detectJsonlTraceSource('/repo/session.v4.jsonl', records);
+    assert.equal(detected?.session.runId, 'session-v4');
+    const calls = byKind(detected!.session, 'tool_call');
+    const results = byKind(detected!.session, 'tool_result');
+    assert.equal(results[0]?.callInstanceId, calls[0]?.callInstanceId);
+    assert.equal(results[0]?.status, 'failure');
+    assert.equal(results[0]?.output, 'permission denied');
+    assert.equal(detectJsonlTraceSource('/repo/session.v4.jsonl', records.slice(1)), undefined);
+  });
+
   it('归因 dsh，并带上会话身份、cwd 与标题', () => {
     const session = parse();
     assert.equal(session.sourceKind, 'dsh');

@@ -1,11 +1,8 @@
 /**
  * DSH 磁盘会话（`~/.dsh/sessions/<cwd>/<session>/session.jsonl.zstd`）→ source-neutral Trace IR。
  *
- * 磁盘事件流与插件运行时喂给 `src/dsh-plugin/trace-adapter.ts` 的那套**不是同一个形状**：
- * 磁盘 header 没有 `seedLength`，工具结果的身份藏在 `data.message.content[].toolCallId`
- * 而不是 `data.toolCallId`（本机 10 份会话实测：678 个结果块的 toolCallId 全部命中
- * `tool/call.data.callId`，0 未命中，1 条 `isError=true`）。因此这里独立实现，不复用插件侧，
- * 也不反向依赖插件宿主。
+ * 文件读取独立于插件宿主：完整 JSONL 含会话头，由宿主选中的原始逻辑事件可以只有消息。
+ * V4 工具结果从 `data.message.toolCallId` 取身份，较早的记录从 `content[].toolCallId` 取。
  *
  * 只映射「有身份可依据」的族：
  * - `session` 头 → 会话身份／cwd／父会话；`session/title` → label
@@ -71,13 +68,14 @@ function dshUnknownEvent(record: Record_, runId: string, sourceIndex: number) {
   return viewKey === undefined ? event : { ...event, recordId: viewKey };
 }
 
-/** DSH 会话头：本机实测字段集稳定，`origin`／`parentSession` 仅子代理会话带。 */
+/** V4 的 agentPreset 与 delegationDepth 可省略，isSeeded 标记继承状态。 */
 export function dshSessionHeaderEvidence(value: unknown): boolean {
   if (!isRecord(value) || value.type !== 'session') return false;
   return typeof value.id === 'string'
     && typeof value.version === 'number'
-    && typeof value.agentPreset === 'string'
-    && typeof value.delegationDepth === 'number';
+    && (value.version === 4
+      ? typeof value.isSeeded === 'boolean' && typeof value.createdAt === 'number'
+      : typeof value.agentPreset === 'string' && typeof value.delegationDepth === 'number');
 }
 
 /** 斜杠命名空间的事件族是 DSH 独有；与任何已支持宿主的记录名都不重叠。 */
@@ -242,7 +240,8 @@ function dshToolEvents(record: Record_, runId: string, sourceIndex: number): Tra
     }];
   }
   const message = isRecord(data.message) ? data.message : undefined;
-  const blocks = Array.isArray(message?.content) ? message.content : [];
+  const blocks = message?.role === 'tool' && typeof message.toolCallId === 'string' ? [message]
+    : Array.isArray(message?.content) ? message.content : [];
   const events: TraceEvent[] = [];
   blocks.forEach((block, position) => {
     if (!isRecord(block)) return;

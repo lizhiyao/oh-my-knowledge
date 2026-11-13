@@ -69,21 +69,34 @@ const AUXILIARY_EVENT_TYPES = new Set([
   'approval/asked',
   'approval/decided',
   'approval/policy',
+  'assistant/attempt',
   'command/done',
   'command/run',
+  'deliverables/presented',
+  'developer/message',
+  'feedback/message-delete',
+  'feedback/message-put',
   'feedback/record',
   'goal/change',
   'hook/invoked',
   'hook/result',
+  'image/offload',
+  'job/registered',
+  'job/settled',
   'llm/retry',
   'llm/retry-started',
+  'model/selection',
   'permission/preset',
   'plan/mode',
   'sandbox/mode',
   'schedule/change',
+  'session-log-deepseek/delivery-accepted',
   'session/title',
   'session/title-llm-request',
+  'subagent/catalog',
   'subagent/descriptor',
+  'subagent/model-selection-policy',
+  'system/message',
   'team/member',
   'team/message/delivered',
   'team/message/queued',
@@ -94,7 +107,11 @@ const AUXILIARY_EVENT_TYPES = new Set([
   'tool-workflow/run-start',
   'tool/code-dispatch',
   'tool/code-dispatch-start',
+  'tool/ptc-dispatch',
+  'tool/ptc-dispatch-start',
   'web/deepseek-search-llm-request',
+  'working-directory/change',
+  'workspace/changes',
 ]);
 
 const PROJECTED_EVENT_TYPES = new Set([
@@ -310,6 +327,13 @@ function toolResultData(data: UnknownRecord): {
   failed: boolean;
 } {
   const message = isRecord(data.message) ? data.message : {};
+  if (message.role === 'tool') {
+    return {
+      callId: stringValue(message.toolCallId),
+      output: textFromContent(message.content) || jsonText(message.content),
+      failed: message.isError === true || data.error !== undefined,
+    };
+  }
   const blocks = Array.isArray(message.content) ? message.content.filter(isRecord) : [];
   const result = blocks.find((block) => block.type === 'tool-result');
   const content = isRecord(result) ? result.content : undefined;

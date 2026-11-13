@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, it, vi } from 'vitest';
 import { apply } from '../../src/dsh-plugin/index.js';
+import { dshKnowledgeTool } from '../../src/dsh-plugin/knowledge.js';
+import { conversationExtractionSource } from '../../src/knowledge/adapters/conversation-source.js';
+import { createLocalKnowledgeApplication } from '../../src/knowledge/application/local.js';
+import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
+import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
+import { knowledgeBodyDigest } from '../../src/knowledge/adapters/body-digest.js';
+import { bodyActor, bodyWrite } from '../knowledge/body-fixtures.js';
 import {
   createDshConversationCatalog,
   dshTraceIngestionSummary,
@@ -149,13 +156,15 @@ function completedEventsAfterSeed(
 
 class FakePersistence implements DshSessionPersistenceLike {
   listCalls = 0;
+  opened: string[] = [];
+  closed: string[] = [];
 
   constructor(
     readonly inspections: Map<string, DshSessionInspectionLike>,
     private readonly mutateRevisionOnce = false,
   ) {}
 
-  async listSnapshots(): Promise<readonly DshPersistenceSnapshotLike[]> {
+  async list(): Promise<readonly DshPersistenceSnapshotLike[]> {
     this.listCalls += 1;
     return Array.from(this.inspections.values()).map((inspection) => ({
       header: inspection.meta,
@@ -165,19 +174,26 @@ class FakePersistence implements DshSessionPersistenceLike {
     }));
   }
 
-  async inspect(id: string): Promise<DshSessionInspectionLike> {
+  async open(id: string, access: 'read') {
+    assert.equal(access, 'read');
     const inspection = this.inspections.get(id);
     if (!inspection) throw new Error(`missing ${id}`);
-    return inspection;
+    this.opened.push(id);
+    return {
+      header: inspection.meta,
+      inheritedEventCount: inspection.meta.seedLength ?? 0,
+      read: async () => this.read(inspection),
+      close: async () => { this.closed.push(id); },
+    };
+  }
+
+  protected read(inspection: DshSessionInspectionLike) {
+    return { events: inspection.events };
   }
 }
 
-class DetachedLogicalPersistence implements DshSessionPersistenceLike {
-  listCalls = 0;
-
-  constructor(readonly inspections: Map<string, DshSessionInspectionLike>) {}
-
-  async listSnapshots(): Promise<readonly DshPersistenceSnapshotLike[]> {
+class DetachedLogicalPersistence extends FakePersistence {
+  override async list(): Promise<readonly DshPersistenceSnapshotLike[]> {
     this.listCalls += 1;
     return Array.from(this.inspections.values()).reverse().map((inspection) => ({
       header: structuredClone(inspection.meta),
@@ -185,15 +201,13 @@ class DetachedLogicalPersistence implements DshSessionPersistenceLike {
     }));
   }
 
-  async inspect(id: string): Promise<DshSessionInspectionLike> {
-    const inspection = this.inspections.get(id);
-    if (!inspection) throw new Error(`missing ${id}`);
-    return structuredClone(inspection);
+  protected override read(inspection: DshSessionInspectionLike) {
+    return structuredClone(super.read(inspection));
   }
 }
 
 class ContinuouslyChangingPersistence extends FakePersistence {
-  override async listSnapshots(): Promise<readonly DshPersistenceSnapshotLike[]> {
+  override async list(): Promise<readonly DshPersistenceSnapshotLike[]> {
     this.listCalls += 1;
     return Array.from(this.inspections.values()).map((inspection) => ({
       header: inspection.meta,
@@ -202,9 +216,10 @@ class ContinuouslyChangingPersistence extends FakePersistence {
   }
 }
 
-function persistenceWithGroup(mutateRevisionOnce = false): FakePersistence {
-  const root = header('root-session');
+function persistenceWithGroup(mutateRevisionOnce = false, cwd = '/workspace/demo'): FakePersistence {
+  const root = header('root-session', { cwd });
   const child = header('child-session', {
+    cwd,
     parentSession: 'root-session',
     origin: 'subagent',
     delegationDepth: 1,
@@ -428,6 +443,7 @@ describe('DSH persistence observation', () => {
     assert.equal(group.rootSessionId, 'root-session');
     assert.equal(group.traces.length, 2);
     assert.deepEqual(group.traces.map((item) => item.session.role), ['main', 'subagent']);
+    assert.deepEqual(persistence.closed, persistence.opened);
   });
 
   it('rejects a group whose revision never stabilizes within the bounded retry budget', async () => {
@@ -565,6 +581,96 @@ describe('DSH persistence observation', () => {
     assert.equal(trajectory?.session.sourceKind, 'dsh');
     assert.ok(trajectory?.session.fullSessionTimeline.some((item) => item.traceRole === 'subagent'));
     assert.equal(trajectory?.sourceRecords.status, 'available');
+    const source = await conversationExtractionSource(catalog, target.threadId);
+    assert.equal(source.messages.find(message => message.role === 'user')?.text, '检查任务轨迹');
+    assert.ok(source.messages.every(message => message.text !== '子任务'));
+
+    const child = catalog.upsert(await readDshObservedGroup(persistenceWithGroup(), 'child-session'));
+    assert.equal(child.threadId, 'child-session');
+    const childSource = await conversationExtractionSource(catalog, child.threadId, child.turnId);
+    assert.equal(childSource.messages.find(message => message.role === 'user')?.text, '子任务');
+  });
+
+  it('captures selected original DSH V4 messages from the requested turn', async () => {
+    const events = completedEventsAfterSeed();
+    const persistence = new FakePersistence(new Map([['dsh-v4', {
+      meta: header('dsh-v4', { version: 4 }),
+      events,
+    }]]));
+    const catalog = createDshConversationCatalog();
+    const target = catalog.upsert(await readDshObservedGroup(persistence, 'dsh-v4'));
+    const selected = await catalog.loadTaskMessageRecords!(target.threadId, target.turnId);
+    assert.ok(selected?.records.length);
+    assert.deepEqual(selected.records.map(record => record.raw), selected.records.map(record => JSON.stringify(events[record.recordIndex - 1])));
+    const source = await conversationExtractionSource(catalog, target.threadId, target.turnId);
+    assert.deepEqual(source.messages.map(({ recordIndex }) => recordIndex), selected.records.map(({ recordIndex }) => recordIndex));
+    assert.deepEqual(source.messages.map(({ role }) => role), ['user', 'assistant']);
+    assert.ok(source.messages.every(message => message.recordIndex > 9));
+  });
+
+  it('closes read handles and refuses cross-project groups before opening them', async () => {
+    const source = persistenceWithGroup();
+    source.inspections.set('child-session', { meta: header('child-session', {
+      cwd: '/workspace/other', parentSession: 'root-session', origin: 'subagent',
+    }), events: completedEvents() });
+    await assert.rejects(readDshObservedGroup(source, 'root-session', {
+      includesCwd: cwd => cwd === '/workspace/demo',
+    }), /当前项目/u);
+    assert.deepEqual(source.opened, []);
+
+    class ReadFailure extends FakePersistence {
+      protected override read(): never { throw new Error('read failed'); }
+    }
+    const broken = new ReadFailure(source.inspections);
+    await assert.rejects(readDshObservedGroup(broken, 'root-session'), /read failed/u);
+    assert.deepEqual(broken.closed, broken.opened);
+  });
+
+  it('retrieves only the current retained revision in the calling DSH project', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'omk-dsh-knowledge-'));
+    const other = mkdtempSync(join(tmpdir(), 'omk-dsh-knowledge-'));
+    try {
+      const persistence = new FakePersistence(new Map([['source', {
+        meta: header('source', { cwd: project, version: 4 }),
+        events: completedEvents('Alpha verification'),
+      }]]));
+      const catalog = createDshConversationCatalog();
+      const target = catalog.upsert(await readDshObservedGroup(persistence, 'source'));
+      const { reading } = await conversationExtractionSource(catalog, target.threadId, target.turnId);
+      const workspace = join(project, '.omk', 'knowledge');
+      const { snapshot } = new FileSourceStore(join(workspace, 'sources'), workspace).capture(reading.projection);
+      const excerpt = snapshot.excerpts.find(item => item.text === 'Alpha verification')!;
+      const command = bodyWrite();
+      command.revision.content.segments[0].evidence[0] = {
+        source: { snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion },
+        selection: { evidenceRef: excerpt.evidenceRef, start: 0, end: 5, quote: 'Alpha' },
+        basis: 'source_assertion',
+      };
+      command.revision.bodyDigest = knowledgeBodyDigest(command.revision);
+      new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace).write(command, bodyActor);
+      const app = createLocalKnowledgeApplication(workspace);
+      const { knowledgeId, revisionId } = command.revision;
+      const retrieve = (cwd: string) => dshKnowledgeTool.execute({ query: 'Alpha' }, {
+        agent: { session: { header: { cwd } } }, signal: new AbortController().signal,
+      });
+      assert.doesNotMatch(await retrieve(project), /knowledgeId:/u);
+      app.maintain(knowledgeId, revisionId, 'retain', '保留初版', 1);
+      assert.match(await retrieve(project), /revisionId: "revision-1"/u);
+      const { revision: revised, history } = app.revise(knowledgeId, revisionId, 2, {
+        title: 'Alpha verification', content: command.revision.content, reuseRationale: command.revision.reuseRationale,
+      }, '复核后更新标题');
+      assert.doesNotMatch(await retrieve(project), /knowledgeId:/u);
+      app.maintain(knowledgeId, revised.revisionId, 'retain', '保留当前修订', history.generation);
+      const result = await retrieve(project);
+      assert.ok(result.includes(`revisionId: "${revised.revisionId}"`));
+      assert.doesNotMatch(result, /revisionId: "revision-1"/u);
+      assert.doesNotMatch(await retrieve(other), /knowledgeId:/u);
+      symlinkSync(join(project, '.omk'), join(other, '.omk'), 'dir');
+      await assert.rejects(retrieve(other), /必须是实际目录/u);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+      rmSync(other, { recursive: true, force: true });
+    }
   });
 });
 
@@ -587,9 +693,11 @@ describe('DSH /omk observe command', () => {
     const nextHost = await import('../../src/studio/http/next-server.js');
     const createStudio = vi.spyOn(nextHost, 'createNextStudioServer');
     const studio: { baseUrl?: string } = {};
-    const persistence = persistenceWithGroup();
+    const persistence = persistenceWithGroup(false, dir);
+    persistence.inspections.set('other-project', { meta: header('other-project'), events: completedEvents() });
     let handler: ((invocation: Record<string, unknown>) => Promise<{ kind: string; text?: string }>) | undefined;
     const dispose = apply({
+      tools: { register: () => () => undefined },
       commands: {
         register(definition: { handler: typeof handler }) {
           handler = definition.handler;
@@ -601,7 +709,7 @@ describe('DSH /omk observe command', () => {
       },
     } as never);
     cleanups.push(async () => {
-      dispose();
+      await dispose();
       if (studio.baseUrl) await vi.waitFor(async () => { await assert.rejects(fetch(`${studio.baseUrl}/health`)); });
       rmSync(dir, { recursive: true, force: true });
     });
@@ -616,6 +724,8 @@ describe('DSH /omk observe command', () => {
     const listed = await handler({ ...invocation, rawInput: 'observe' });
     assert.equal(listed.kind, 'success');
     assert.match(listed.text ?? '', /root-session/);
+    assert.doesNotMatch(listed.text ?? '', /other-project/u);
+    assert.equal((await handler({ ...invocation, rawInput: 'observe other-project' })).kind, 'error');
     const [observed, concurrent] = await Promise.all([
       handler({ ...invocation, rawInput: 'observe root-session' }),
       handler({ ...invocation, rawInput: 'observe root-session' }),
@@ -625,10 +735,11 @@ describe('DSH /omk observe command', () => {
     assert.equal(createStudio.mock.calls.length, 1, '并发 observe 只创建一个 Studio 服务');
     const reportsDir = join(dir, '.omk', 'observe', 'inbox', 'reports');
     assert.equal(readdirSync(reportsDir).some((file) => file.endsWith('.report.json')), true);
-    const url = /任务轨迹：(http:\/\/[^\s]+)/u.exec(observed.text ?? '')?.[1];
+    const url = /任务轨迹与知识提炼：(http:\/\/[^\s]+)/u.exec(observed.text ?? '')?.[1];
     assert.ok(url);
     studio.baseUrl = new URL(url).origin;
     assert.equal(new URL(url).port, String(port), '沿用 OMK_REPORT_PORT 的固定端口');
+    assert.equal(new URL(url).searchParams.get('workspace'), join(realpathSync(dir), '.omk', 'knowledge'));
     assert.ok(concurrent.text?.includes(url));
     const response = await fetch(url);
     assert.equal(response.status, 200);

@@ -101,18 +101,22 @@ Supported trace formats: Codex rollout JSONL, Claude Code session JSONL, OpenCla
 
 Both workflows persist an ingestion summary. If the source contains malformed records, valid JSON values that are not records, or events the current adapter cannot recognize, the CLI and Studio show a completeness notice. Review that notice before treating absence of a signal as evidence that no problem occurred. Runtime guardian sessions are counted separately as intentional filters.
 
-## Inspect a task inside DeepSeek Harness
+## Keep and reuse knowledge inside DeepSeek Harness
 
-When the OMK bundle is installed and the profile provides `sessionPersistence`, no DSH log export is needed:
+Install the [OMK bundle](../../reference/integration/executors.md#deepseek-harness-prefer-the-host-plugin) in a DSH Web profile with `sessionPersistence`. From another session in the same project, run:
 
 ```text
 /omk observe
 /omk observe <session-id>
 ```
 
-The first command lists recent terminal root sessions and excludes the current command session. The second reads the root and descendant logical logs through DSH's read-only `listSnapshots()` / `inspect()` seam, obtains a consistent snapshot, and returns its Studio Task Trajectory URL. JSONL, zstd, and SQLite backends are transparent to the user.
+The first command lists recent finished root sessions created in the same directory. The second opens the latest turn of the selected session in Studio.
 
-The first version is offline-only and does not follow a session that is still being written. Continuous revision changes, unknown required events, sequence gaps, unclosed turns / steps, or missing tool results prevent OMK from presenting the trace as complete. The page retains observable cwd, provider / model, message origins, tool outcomes, terminal status, and subagent lineage without inferring hidden reasoning.
+1. Open the Studio address shown by DSH. Click **Extract this turn** and choose the human and assistant messages to capture. Review the preview before saving the source and sending each generation stage to your configured model.
+2. Check the candidate against its source. Keep it or edit it and keep the new revision. OMK opens `.omk/knowledge` in the directory where the DSH session was created.
+3. In another DSH session in that directory, ask the agent to use `omk_knowledge_retrieve` for a specific task. Ask it to check applicability and cite the knowledge and revision IDs it uses.
+
+Studio opens a read-only snapshot of the DSH session. Extraction keeps the selected turn's original logical message records and their indexes. The trajectory also displays tool results and subagent activity. Retrieval uses retained current revisions in the project's workspace and applies the same literal search as `omk know retrieve`.
 
 
 ## Turning observations into samples
