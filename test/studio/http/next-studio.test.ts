@@ -82,6 +82,9 @@ describe('Next Studio production boundary', () => {
     const knowledge = await fetch(`${urlA}/knowledge?view=reports`);
     const knowledgeHtml = await knowledge.text();
     assert.equal(knowledge.status, 200);
+    const inlineCss = Array.from(knowledgeHtml.matchAll(/<style\b[^>]*>(.*?)<\/style>/gs), match => match[1]).join('\n');
+    assert.ok(/--ant-color-primary\s*:\s*[^\s;}]/.test(inlineCss), '首屏 CSS 应定义 Ant Design 主题色');
+    assert.ok(/--ant-font-family\s*:\s*[^\s;}]/.test(inlineCss), '首屏 CSS 应定义 Ant Design 字体');
     // 语言不进地址：站内链接一律不带 lang，渲染语言由本机设置决定。
     assert.match(knowledgeHtml, /<a(?=[^>]*href="\/knowledge")(?=[^>]*aria-current="page")/u);
     assert.match(knowledgeHtml, /knowledge-table/);

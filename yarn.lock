@@ -225,25 +225,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ant-design/cssinjs@npm:2, @ant-design/cssinjs@npm:^2.1.2":
-  version: 2.2.0
-  resolution: "@ant-design/cssinjs@npm:2.2.0"
-  dependencies:
-    "@babel/runtime": "npm:^7.11.1"
-    "@emotion/hash": "npm:^0.8.0"
-    "@emotion/unitless": "npm:^0.7.5"
-    "@rc-component/util": "npm:^1.14.0"
-    clsx: "npm:^2.1.1"
-    csstype: "npm:^3.1.3"
-    stylis: "npm:^4.3.4"
-  peerDependencies:
-    react: ">=16.0.0"
-    react-dom: ">=16.0.0"
-  checksum: 10c0/91d0e4d76e838b8822e3969b6137ecf2b394ca213ec69c7df9870b4e6cb2ef2f255152a2db083e4345019cb0c389bbd5cdc23539d14cfc46be1180fec1142c0d
-  languageName: node
-  linkType: hard
-
-"@ant-design/cssinjs@npm:~2.1.2":
+"@ant-design/cssinjs@npm:^2.1.2, @ant-design/cssinjs@npm:~2.1.2":
   version: 2.1.2
   resolution: "@ant-design/cssinjs@npm:2.1.2"
   dependencies:
@@ -1907,20 +1889,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rc-component/motion@npm:^1.0.0, @rc-component/motion@npm:^1.1.3, @rc-component/motion@npm:^1.1.4, @rc-component/motion@npm:^1.3.3":
-  version: 1.3.3
-  resolution: "@rc-component/motion@npm:1.3.3"
-  dependencies:
-    "@rc-component/util": "npm:^1.11.0"
-    clsx: "npm:^2.1.1"
-  peerDependencies:
-    react: ">=16.9.0"
-    react-dom: ">=16.9.0"
-  checksum: 10c0/1731f51d3856f514ac1d36fe7d1747c722e13e1404a1df0b8000d9cded5321771d7079c1d1016705531c148c38cd9054c7de2e4fe08beb05e8e4d96956ed6c0c
-  languageName: node
-  linkType: hard
-
-"@rc-component/motion@npm:^1.4.0":
+"@rc-component/motion@npm:^1.0.0, @rc-component/motion@npm:^1.1.3, @rc-component/motion@npm:^1.1.4, @rc-component/motion@npm:^1.3.3, @rc-component/motion@npm:^1.4.0":
   version: 1.4.0
   resolution: "@rc-component/motion@npm:1.4.0"
   dependencies:
@@ -7044,7 +7013,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "oh-my-knowledge@workspace:."
   dependencies:
-    "@ant-design/cssinjs": "npm:2"
+    "@ant-design/cssinjs": "npm:~2.1.2"
     "@ant-design/nextjs-registry": "npm:^1.3.0"
     "@inquirer/prompts": "npm:^8.4.3"
     "@modelcontextprotocol/sdk": "npm:^1.30.0"
